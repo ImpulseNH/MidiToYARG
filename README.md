@@ -44,7 +44,7 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-This project started from a simple goal: playing Doom songs in YARG (Yet Another Rhythm Game). Since very few charts were available, and manual charting is a time-consuming process, I decided to automate it.
+This project started from a simple idea: I wanted to play **Doom songs on drums** in YARG (Yet Another Rhythm Game). Since finding specific **drum charts** for them was quite difficult, and manual charting is a time-consuming process, I decided to automate the conversion from MIDI to game chart.
 
 With the help of **Gemini (AI)**, I built this tool to convert standard MIDI files into playable charts, initially focusing on Drums. The goal is to bridge the gap between listening to a song and playing it, without spending hours in a chart editor.
 
@@ -54,6 +54,7 @@ With the help of **Gemini (AI)**, I built this tool to convert standard MIDI fil
 - **Auto-Humanization**: includes a smart logic to enforce a 2-hand limit, filtering out impossible inputs (e.g., removing a 3rd concurrent hand hit while keeping the kick drum).
 - **Metadata Management**: easy-to-use GUI to input song details (Artist, Album, Year, etc.) which generates the `song.ini` file.
 - **Beat Track Generation**: automatically creates the tempo map and beat grid for the game engine.
+- **Optional Quantization**: includes a "Auto-Quantize" option to snap notes to the beat, correcting small timing imperfections. *Tested on Doom songs (which contain intentional timing variations), achieving perfect correction on ~80% of tracks.*
 
 ### Built With
 
@@ -114,11 +115,13 @@ If you want to modify the code or run it through Python:
 1. Open the application by running `main.py`.
 2. Click **"Select .mid"** and choose your General MIDI file.
 3. The app will try to auto-fill metadata from the filename. Review and edit the fields (Artist, Song, Genre, Difficulty).
-4. Click **"GENERATE CHART"**.
+4. (Optional) Toggle **"Auto-Quantize"** if you want the tool to try aligning off-beat notes to the grid.
+5. Click **"GENERATE CHART"**.
 5. A folder will be created in the `output` directory.
 6. **Important**: You must manually copy your audio file (renamed to `song.ogg`) into this new folder.
-7. Move the entire folder to your YARG/Clone Hero `songs` directory.
-8. Rescan songs in-game and play!
+7. Review your chart! If the auto-quantization wasn't perfect, I recommend using [Moonscraper Chart Editor](https://github.com/FireFox2000000/Moonscraper-Chart-Editor) to finalize it.
+8. Move the entire folder to your YARG/Clone Hero `songs` directory.
+9. Rescan songs in-game and play!
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -126,7 +129,7 @@ If you want to modify the code or run it through Python:
 ## Roadmap
 
 - [ ] Add support for more difficulties (currently defaults to Expert).
-- [ ] Implement smart quantization to align off-beat notes.
+- [x] Implement smart quantization to align off-beat notes.
 - [ ] Add support for other instruments (Guitar, Bass).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>

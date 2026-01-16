@@ -10,27 +10,27 @@
 DRUM_MAPPING = {
     # Kicks
     35: 96, 36: 96,
-    
+
     # Snares
-    38: 97, 40: 97, 37: 97, 
-    
+    37: 97, 38: 97, 40: 97,
+
     # Toms (Yellow)
-    48: 98, 50: 98, # High Toms
-    
+    48: 98, 50: 98,  # High Toms
+
     # Toms (Blue)
-    45: 99, 47: 99, # Low/Mid Toms
-    
+    45: 99, 47: 99,  # Low/Mid Toms
+
     # Toms (Green)
-    41: 100, 43: 100, # Floor Toms
-    
+    41: 100, 43: 100,  # Floor Toms
+
     # Cymbals - Hi-Hat (Yellow)
-    42: 98, 44: 98, 46: 98,
-    
+    42: 98, 44: 98, 46: 98, 55: 98,
+
     # Cymbals - Ride (Blue)
-    51: 99, 59: 99, 53: 99,
-    
+    51: 99, 53: 99, 59: 99,
+
     # Cymbals - Crash (Green)
-    49: 100, 57: 100, 52: 100, 55: 100
+    49: 100, 52: 100, 57: 100
 }
 
 # Tom notes
@@ -46,3 +46,29 @@ TOM_MARKERS_MAP = {
     99: 111,
     100: 112
 }
+
+# Humanization Priorities (Higher = Keep)
+PRIORITY_MAP = {
+    # Snares / Crashes (Keep these)
+    38: 3, 40: 3, 49: 3, 57: 3,
+    # Toms / Rides (Middle ground)
+    51: 2, 59: 2, 41: 2, 43: 2, 45: 2, 47: 2, 48: 2, 50: 2, 
+    # Hi-Hats (Drop first)
+    42: 1, 44: 1, 46: 1
+}
+
+KICK_NOTES = {35, 36}
+
+# Conflict Groups
+# Green Collision: Crash vs Floor Tom
+GREEN_CRASHES = {49, 52, 55, 57}
+GREEN_TOMS = {41, 43}
+
+# Blue Collision: Ride vs Mid Tom
+BLUE_CYMBALS = {51, 53, 59} 
+BLUE_TOMS = {45, 47}
+
+# Target Colors for Displacement
+BLUE_GEM = 99   # Target for displaced Green Tom
+YELLOW_GEM = 98 # Target for displaced Blue Tom
+GREEN_GEM = 100 # Target for displaced Blue Cymbal

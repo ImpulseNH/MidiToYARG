@@ -9,3 +9,4 @@ output/
 *.spec
 build/
 dist/
+file_version_info.txt

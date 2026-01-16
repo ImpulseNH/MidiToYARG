@@ -1,14 +1,21 @@
 import shutil
-from pathlib import Path
 from collections import defaultdict
-from typing import List, Dict, Any, Tuple
-from mido import MidiFile, MidiTrack, MetaMessage, Message
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
-from mappings import DRUM_MAPPING, IS_TOM, TOM_MARKERS_MAP
+from mido import Message, MetaMessage, MidiFile, MidiTrack
+
+from mappings import (
+    BLUE_CYMBALS, BLUE_GEM, BLUE_TOMS, DRUM_MAPPING, GREEN_CRASHES,
+    GREEN_GEM, GREEN_TOMS, IS_TOM, KICK_NOTES, PRIORITY_MAP,
+    TOM_MARKERS_MAP, YELLOW_GEM
+)
+
 
 # Config
 NOTE_LEN = 1
-MIN_VELOCITY = 40
+MIN_VELOCITY = 20
+
 
 class MidiToYARGConverter:
     """
@@ -16,7 +23,7 @@ class MidiToYARGConverter:
     Includes logic for tempo mapping, beat generation, and strict limb-limit humanization.
     """
 
-    def process_song(self, midi_path: str, metadata: Dict[str, Any], output_dir: str) -> str:
+    def process_song(self, midi_path: str, metadata: Dict[str, Any], output_dir: str, quantize: bool = True) -> str:
         """
         Main pipeline entry point. Prepares directories and orchestrates track generation.
         """
@@ -33,7 +40,7 @@ class MidiToYARGConverter:
         folder.mkdir(parents=True, exist_ok=True)
 
         # Core generation
-        self._create_chart(midi_path, str(folder / "notes.mid"))
+        self._create_chart(midi_path, str(folder / "notes.mid"), quantize)
         self._create_ini(metadata, folder)
 
         return str(folder)
@@ -41,7 +48,8 @@ class MidiToYARGConverter:
     def _clean_name(self, text: str) -> str:
         return "".join(c for c in text if c.isalnum() or c in " -_.").strip()
 
-    def _create_chart(self, input_path: str, output_path: str) -> None:
+
+    def _create_chart(self, input_path: str, output_path: str, quantize: bool) -> None:
         """
         Rebuilds the MIDI structure. Uses Type 1 to allow separate Tempo and Instrument tracks.
         """
@@ -50,24 +58,7 @@ class MidiToYARGConverter:
         mid_out = MidiFile(type=1, ticks_per_beat=mid_in.ticks_per_beat)
 
         # 1. Build Tempo Map (Track 0)
-        tempo_track = MidiTrack()
-        tempo_track.name = "Tempo Map"
-        mid_out.tracks.append(tempo_track)
-
-        tempo_events = []
-        abs_time = 0
-        
-        # Flatten track 0 events to absolute time for easier processing
-        for msg in mid_in.tracks[0]:
-            abs_time += msg.time
-            if msg.type in ("set_tempo", "time_signature"):
-                tempo_events.append((abs_time, msg))
-
-        # Write tempo events with delta times
-        last_t = 0
-        for t, msg in tempo_events:
-            tempo_track.append(msg.copy(time=t - last_t))
-            last_t = t
+        tempo_events = self._build_tempo_track(mid_in, mid_out)
 
         # Calculate total song duration in ticks for the Beat Track
         total_ticks = max((sum(m.time for m in t) for t in mid_in.tracks), default=0)
@@ -86,7 +77,7 @@ class MidiToYARGConverter:
             drum_track.append(MetaMessage(type_, **{kw: h}, time=0))
 
         # Process notes and write to track
-        events = self._process_drums(mid_in)
+        events = self._process_drums(mid_in, quantize)
         self._write_track(drum_track, events)
 
         mid_out.save(output_path)
@@ -130,10 +121,68 @@ class MidiToYARGConverter:
             curr += ticks_per_beat
             beat_count = (beat_count + 1) % beats_bar
 
-    def _process_drums(self, mid_in: MidiFile) -> List[Tuple[int, str, int, int]]:
+    def _build_tempo_track(self, mid_in: MidiFile, mid_out: MidiFile) -> List[Tuple[int, MetaMessage]]:
         """
-        Extracts relevant drum notes, applies mapping, and handles 
-        Tom markers (blue/yellow/green cymbal vs tom distinction).
+        Extracts tempo events and builds the Tempo Map track.
+        """
+        tempo_track = MidiTrack()
+        tempo_track.name = "Tempo Map"
+        mid_out.tracks.append(tempo_track)
+
+        tempo_events = []
+        abs_time = 0
+        
+        # Flatten track 0 events to absolute time
+        for msg in mid_in.tracks[0]:
+            abs_time += msg.time
+            if msg.type in ("set_tempo", "time_signature"):
+                tempo_events.append((abs_time, msg))
+
+        # Write to track
+        last_t = 0
+        for t, msg in tempo_events:
+            tempo_track.append(msg.copy(time=t - last_t))
+            last_t = t
+            
+        return tempo_events
+
+    def _process_drums(self, mid_in: MidiFile, quantize: bool) -> List[Tuple[int, str, int, int]]:
+        """
+        Orchestrates the drum processing pipeline: Quantize (Optional) -> Humanize -> Conflict Resolve.
+        """
+        if quantize:
+            timeline = self._quantize_events(mid_in)
+        else:
+            timeline = self._get_raw_events(mid_in)
+        self._humanize_timeline(timeline)
+        return self._resolve_conflicts(timeline)
+
+    def _quantize_events(self, mid_in: MidiFile) -> Dict[int, List[int]]:
+        """
+        Reads MIDI tracks and snaps notes to the nearest grid.
+        """
+        timeline = defaultdict(list)
+        tpb = mid_in.ticks_per_beat
+        
+        # Config: Snap tolerance (11%) and Grid (1/8 notes)
+        tolerance_ticks = tpb * 0.11
+        anchor_grid = tpb / 2
+
+        for track in mid_in.tracks:
+            abs_t = 0
+            for msg in track:
+                abs_t += msg.time
+                if (msg.type == "note_on" and msg.channel == 9):
+                    if msg.velocity >= MIN_VELOCITY and msg.note in DRUM_MAPPING:
+                        # Magnetic Snap
+                        nearest = round(abs_t / anchor_grid) * anchor_grid
+                        final_time = int(nearest) if abs(abs_t - nearest) <= tolerance_ticks else abs_t
+                        timeline[final_time].append(msg.note)
+        return timeline
+
+    def _get_raw_events(self, mid_in: MidiFile) -> Dict[int, List[int]]:
+        """
+        Reads MIDI tracks and extracts notes without snapping to grid.
         """
         timeline = defaultdict(list)
         
@@ -141,59 +190,67 @@ class MidiToYARGConverter:
             abs_t = 0
             for msg in track:
                 abs_t += msg.time
-                
                 if (msg.type == "note_on" and msg.channel == 9):
                     if msg.velocity >= MIN_VELOCITY and msg.note in DRUM_MAPPING:
-                        # Store by absolute time to handle simultaneous hits
                         timeline[abs_t].append(msg.note)
+        return timeline
 
-        # Remove impossible simultaneous inputs (more than 2 hands + foot)
-        self._humanize_timeline(timeline)
-
+    def _resolve_conflicts(self, timeline: Dict[int, List[int]]) -> List[Tuple[int, str, int, int]]:
+        """
+        Converts timeline to events and resolves color collisions.
+        Logic: If a cymbal and a tom share the same color at the same time, 
+        one is moved to prevent unplayable gems (e.g., Green Crash vs Green Tom).
+        """
         final_events = []
-        
+
         for t in sorted(timeline.keys()):
             raw_notes = set(timeline[t])
             
+            # Check Collisions
+            collision_green = not raw_notes.isdisjoint(GREEN_CRASHES) and not raw_notes.isdisjoint(GREEN_TOMS)
+            collision_blue = not raw_notes.isdisjoint(BLUE_CYMBALS) and not raw_notes.isdisjoint(BLUE_TOMS)
+
             for midi_n in raw_notes:
                 gem = DRUM_MAPPING[midi_n]
                 
+                # logic: Move Cymbal if collision exists
+                if collision_green and midi_n in GREEN_CRASHES:
+                    gem = BLUE_GEM 
+                elif collision_blue and midi_n in BLUE_CYMBALS:
+                    gem = GREEN_GEM
+
+                # Write Note
                 final_events.append((t, "note_on", gem, 100))
                 final_events.append((t + NOTE_LEN, "note_off", gem, 0))
 
-                # Add special marker notes if the drum is a Tom
+                # Write Tom Marker
                 if midi_n in IS_TOM and gem in TOM_MARKERS_MAP:
-                    m = TOM_MARKERS_MAP[gem]
-                    final_events.append((t, "note_on", m, 100))
-                    final_events.append((t + NOTE_LEN, "note_off", m, 0))
+                    marker = TOM_MARKERS_MAP[gem]
+                    final_events.append((t, "note_on", marker, 100))
+                    final_events.append((t + NOTE_LEN, "note_off", marker, 0))
 
         return sorted(final_events, key=lambda x: x[0])
 
     def _humanize_timeline(self, timeline: Dict[int, List[int]]) -> None:
         """
-        Enforces a 2-hand limit for non-kick drum parts.
-        Uses a priority map to decide which notes to keep (e.g. Crash > Hi-Hat).
+        Enforces 2-hand limit. Kicks are ignored (feet).
+        Priority: Snare/Crash (3) > Tom/Ride (2) > Hi-Hat (1).
         """
-        # Lower number = Higher priority to keep
-        PRIORITY = {
-            38: 3, 40: 3, 49: 3, 57: 3,        # Snares / Crashes
-            51: 2, 59: 2, 41: 2, 43: 2, 45: 2, # Toms / Rides
-            47: 2, 48: 2, 50: 2, 
-            42: 1, 44: 1, 46: 1                # Hi-Hats (Usually first to go)
-        }
-        KICK_NOTES = {35, 36}
-
         for t, notes in timeline.items():
-            unique = list(set(notes))
-            if len(unique) <= 2:
+            unique_notes = list(set(notes))
+            
+            # No optimization needed for feasible hits
+            if len(unique_notes) <= 2:
                 continue
 
-            hands = [n for n in unique if n not in KICK_NOTES]
-            feet = [n for n in unique if n in KICK_NOTES]
+            hands = [n for n in unique_notes if n not in KICK_NOTES]
+            feet = [n for n in unique_notes if n in KICK_NOTES]
 
-            # If more than two hands would be required, drop low-priority notes
             if len(hands) > 2:
-                hands.sort(key=lambda x: PRIORITY.get(x, 2), reverse=True)
+                # Sort descending: highest priority remains at index 0 and 1
+                hands.sort(key=lambda x: PRIORITY_MAP.get(x, 2), reverse=True)
+                
+                # Keep top 2 hands + all feet
                 timeline[t] = feet + hands[:2]
 
     def _write_track(self, track: MidiTrack, events: List[Tuple[int, str, int, int]]) -> None:
