@@ -48,13 +48,22 @@ This project started from a simple idea: I wanted to play **Doom songs on drums*
 
 With the help of **Gemini (AI)**, I built this tool to convert standard MIDI files into playable charts, initially focusing on Drums. The goal is to bridge the gap between listening to a song and playing it, without spending hours in a chart editor.
 
+### Project Goal
+While this tool automates the heavy lifting of chart creation, **nothing beats the precision and artistry of a manual charter**. 
+
+The goal of this project is not to replace human charting, but to be an **excellent starting point**. By employing advanced heuristics, it generates a solid, enjoyable, and immediately playable base (especially for Drums). This allows charters to skip the tedious work of placing thousands of notes and focus on refining the details,drastically accelerating the workflow.
 
 ### Features
-- **MIDI to Chart Conversion**: automatically converts `.mid` files to `notes.mid` compatible with YARG and Clone Hero.
-- **Auto-Humanization**: includes a smart logic to enforce a 2-hand limit, filtering out impossible inputs (e.g., removing a 3rd concurrent hand hit while keeping the kick drum).
-- **Metadata Management**: easy-to-use GUI to input song details (Artist, Album, Year, etc.) which generates the `song.ini` file.
-- **Beat Track Generation**: automatically creates the tempo map and beat grid for the game engine.
-- **Optional Quantization**: includes a "Auto-Quantize" option to snap notes to the beat, correcting small timing imperfections. *Tested on Doom songs (which contain intentional timing variations), achieving perfect correction on ~80% of tracks.*
+- **Multi-Instrument Support**: converts tracks for **Drums, Guitar (5-lane), and Bass (5-lane)**.
+- **Advanced Drum Logic**:
+  - **Auto-Humanization**: Enforces strict 2-hand limits.
+  - **Conflict Resolution**: Intelligently handles cymbal/tom collisions and "Double Crashes" (e.g., moves one cymbal to a different color to allow 2-handed play).
+- **Metadata & Audio Handling**:
+  - GUI for full metadata editing (Artist, Album, Difficulties per instrument).
+  - **Auto-Calculates Band Difficulty** based on active instruments.
+  - Automatically copies and renames your audio file to `song.ogg`, ensuring the folder is ready for YARG drop-in.
+- **Beat Track Generation**: automatically creates the tempo map and beat grid.
+- **Optional Quantization**: includes a "Auto-Quantize" option (snapping to 1/8 notes) to correct small timing imperfections.
 
 ### Built With
 
@@ -114,23 +123,24 @@ If you want to modify the code or run it through Python:
 
 1. Open the application by running `main.py`.
 2. Click **"Select .mid"** and choose your General MIDI file.
-3. The app will try to auto-fill metadata from the filename. Review and edit the fields (Artist, Song, Genre, Difficulty).
-4. (Optional) Toggle **"Auto-Quantize"** if you want the tool to try aligning off-beat notes to the grid.
-5. Click **"GENERATE CHART"**.
-5. A folder will be created in the `output` directory.
-6. **Important**: You must manually copy your audio file (renamed to `song.ogg`) into this new folder.
-7. Review your chart! If the auto-quantization wasn't perfect, I recommend using [Moonscraper Chart Editor](https://github.com/FireFox2000000/Moonscraper-Chart-Editor) to finalize it.
-8. Move the entire folder to your YARG/Clone Hero `songs` directory.
-9. Rescan songs in-game and play!
+3. The app will try to auto-fill metadata. Review and edit details.
+4. (Optional but recommended) **Select Audio**: Choose your backing track (must be `.ogg`). The app will copy it to the final folder as `song.ogg`.
+5. **Configure Instruments**: Set difficulties (0-6) for Drums, Guitar, and Bass. Set to 'Disabled' to exclude an instrument.
+6. (Optional) Toggle **"Auto-Quantize"** to snap notes to the nearest 1/8 grid.
+7. Click **"GENERATE CHART"**.
+8. A complete song folder (ready for YARG) will be created in the `output` directory.
+9. Move this folder to your game's `songs` directory, scan, and play!
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- ROADMAP -->
 ## Roadmap
 
+- [ ] Add support for multitrack songs.
 - [ ] Add support for more difficulties (currently defaults to Expert).
 - [x] Implement smart quantization to align off-beat notes.
-- [ ] Add support for other instruments (Guitar, Bass).
+- [x] Add support for other instruments (Guitar, Bass).
+- [ ] Add support for Pro Keys / Vocals.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

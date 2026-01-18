@@ -1,74 +1,92 @@
-# mappings.py
+# =============================================================================
+# 1. GENERAL MIDI / SHARED CONSTANTS
+# =============================================================================
+# Base MIDI Notes for Difficulties
+BASE_EXPERT = 96
+# Future expansion: BASE_HARD=84, BASE_MEDIUM=72, BASE_EASY=60
 
-# Standard General MIDI (GM) to rhythm games notes (Expert)
-# 96: Kick (Orange/Bar)
-# 97: Snare (Red)
-# 98: Yellow (Hi-Hat / High Tom)
-# 99: Blue (Ride / Mid Tom)
-# 100: Green (Crash / Floor Tom)
+# Lane Offsets (0-indexed from Left to Right / Kick to Orange)
+LANE_0 = 0  # Green  / Kick
+LANE_1 = 1  # Red    / Snare
+LANE_2 = 2  # Yellow / Tom1 / HiHat
+LANE_3 = 3  # Blue   / Tom2 / Ride
+LANE_4 = 4  # Orange / Tom3 / Crash
+
+# 5-Lane Guitar/Bass Mappings (Derived)
+GEM_GREEN  = BASE_EXPERT + LANE_0
+GEM_RED    = BASE_EXPERT + LANE_1
+GEM_YELLOW = BASE_EXPERT + LANE_2
+GEM_BLUE   = BASE_EXPERT + LANE_3
+GEM_ORANGE = BASE_EXPERT + LANE_4
+
+# =============================================================================
+# 2. DRUMS MAPPINGS
+# =============================================================================
+# Drum Specific Aliases (Mapped to Lanes)
+DRUM_KICK   = BASE_EXPERT + LANE_0
+DRUM_SNARE  = BASE_EXPERT + LANE_1
+DRUM_YELLOW = BASE_EXPERT + LANE_2
+DRUM_BLUE   = BASE_EXPERT + LANE_3
+DRUM_GREEN  = BASE_EXPERT + LANE_4
+
+# Logical Groups (Used for Conflict Resolution & Identification)
+YELLOW_TOMS = {48, 50}
+BLUE_TOMS   = {45, 47}
+GREEN_TOMS  = {41, 43}
+ALL_TOMS    = YELLOW_TOMS | BLUE_TOMS | GREEN_TOMS
+
+BLUE_CYMBALS  = {51, 53, 57, 59} # Added 57 (Crash 2) to Blue
+GREEN_CYMBALS = {49, 52}         # Kept 49 (Main Crash) and 52 (China) in Green
 
 DRUM_MAPPING = {
-    # Kicks
-    35: 96, 36: 96,
-
-    # Snares
-    37: 97, 38: 97, 40: 97,
-
+    # Kicks & Snares
+    35: DRUM_KICK, 36: DRUM_KICK,
+    37: DRUM_SNARE, 38: DRUM_SNARE, 40: DRUM_SNARE,
+    
     # Toms (Yellow)
-    48: 98, 50: 98,  # High Toms
-
+    48: DRUM_YELLOW, 50: DRUM_YELLOW,
     # Toms (Blue)
-    45: 99, 47: 99,  # Low/Mid Toms
-
+    45: DRUM_BLUE, 47: DRUM_BLUE,
     # Toms (Green)
-    41: 100, 43: 100,  # Floor Toms
+    41: DRUM_GREEN, 43: DRUM_GREEN,
 
     # Cymbals - Hi-Hat (Yellow)
-    42: 98, 44: 98, 46: 98, 55: 98,
+    42: DRUM_YELLOW, 44: DRUM_YELLOW, 46: DRUM_YELLOW, 55: DRUM_YELLOW,
 
-    # Cymbals - Ride (Blue)
-    51: 99, 53: 99, 59: 99,
+    # Cymbals - Ride & Crash 2 (Blue)
+    51: DRUM_BLUE, 53: DRUM_BLUE, 57: DRUM_BLUE, 59: DRUM_BLUE,
 
-    # Cymbals - Crash (Green)
-    49: 100, 52: 100, 57: 100
+    # Cymbals - Crash 1 & China (Green)
+    49: DRUM_GREEN, 52: DRUM_GREEN
 }
 
-# Tom notes
-IS_TOM = [
-    48, 50,      # High Toms
-    45, 47,      # Low/Mid Toms
-    41, 43       # Floor Toms
-]
+# Derived Sets for Logic
+KICK_NOTES = {35, 36}
+SPLASH_NOTE = 55
+IS_TOM = list(ALL_TOMS)
 
-# Tom markers map
+# Animation Markers
 TOM_MARKERS_MAP = {
-    98: 110,
-    99: 111,
-    100: 112
+    DRUM_YELLOW: 110,
+    DRUM_BLUE:   111,
+    DRUM_GREEN:  112
 }
 
 # Humanization Priorities (Higher = Keep)
 PRIORITY_MAP = {
-    # Snares / Crashes (Keep these)
-    38: 3, 40: 3, 49: 3, 57: 3,
-    # Toms / Rides (Middle ground)
-    51: 2, 59: 2, 41: 2, 43: 2, 45: 2, 47: 2, 48: 2, 50: 2, 
-    # Hi-Hats (Drop first)
-    42: 1, 44: 1, 46: 1
+    # Snares / Crashes (Priority 3)
+    38:3, 40:3, 49:3, 57:3,
+    
+    # Rides / Toms (Priority 2)
+    51:2, 59:2,                            # Rides
+    41:2, 43:2, 45:2, 47:2, 48:2, 50:2,    # Toms
+    
+    # Hi-Hats (Priority 1)
+    42:1, 44:1, 46:1
 }
 
-KICK_NOTES = {35, 36}
-
-# Conflict Groups
-# Green Collision: Crash vs Floor Tom
-GREEN_CRASHES = {49, 52, 55, 57}
-GREEN_TOMS = {41, 43}
-
-# Blue Collision: Ride vs Mid Tom
-BLUE_CYMBALS = {51, 53, 59} 
-BLUE_TOMS = {45, 47}
-
-# Target Colors for Displacement
-BLUE_GEM = 99   # Target for displaced Green Tom
-YELLOW_GEM = 98 # Target for displaced Blue Tom
-GREEN_GEM = 100 # Target for displaced Blue Cymbal
+# =============================================================================
+# 3. 5-LANE INSTRUMENTS CONFIG
+# =============================================================================
+PROG_GUITAR_MIN, PROG_GUITAR_MAX = 24, 31
+PROG_BASS_MIN,   PROG_BASS_MAX   = 32, 39
