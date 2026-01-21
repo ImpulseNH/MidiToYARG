@@ -64,6 +64,7 @@ The goal of this project is not to replace human charting, but to be an **excell
   - Automatically copies and renames your audio file to `song.ogg`, ensuring the folder is ready for YARG drop-in.
 - **Beat Track Generation**: automatically creates the tempo map and beat grid.
 - **Optional Quantization**: includes a "Auto-Quantize" option (snapping to 1/8 notes) to correct small timing imperfections.
+- **Optional Count-in**: includes a "Add 4-Beat Count-in" option to add a count-in section at the beginning of the song.
 
 ### Built With
 
@@ -127,9 +128,10 @@ If you want to modify the code or run it through Python:
 4. (Optional but recommended) **Select Audio**: Choose your backing track (must be `.ogg`). The app will copy it to the final folder as `song.ogg`.
 5. **Configure Instruments**: Set difficulties (0-6) for Drums, Guitar, and Bass. Set to 'Disabled' to exclude an instrument.
 6. (Optional) Toggle **"Auto-Quantize"** to snap notes to the nearest 1/8 grid.
-7. Click **"GENERATE CHART"**.
-8. A complete song folder (ready for YARG) will be created in the `output` directory.
-9. Move this folder to your game's `songs` directory, scan, and play!
+7. (Optional) Toggle **"Add 4-Beat Count-in"** to add a count-in section at the beginning of the song.
+8. Click **"GENERATE CHART"**.
+9. A complete song folder (ready for YARG) will be created in the `output` directory.
+10. Move this folder to your game's `songs` directory, scan, and play!
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

@@ -49,7 +49,7 @@ class MidiToYARGConverter:
     def process_song(self, midi_path: str, metadata: Dict[str, Any], output_dir: str, 
                      quantize: bool = True, include_ghosts: bool = False,
                      bass_idx: int = -1, guitar_idx: int = -1,
-                     audio_path: str = "") -> str:
+                     audio_path: str = "", shift_chart: bool = False) -> str:
         """
         Main pipeline entry point. Prepares directories and orchestrates track generation.
         """
@@ -80,7 +80,7 @@ class MidiToYARGConverter:
         has_drums, has_bass, has_guitar = self._create_chart(
             midi_path, str(folder / "notes.mid"), quantize, include_ghosts, 
             bass_idx, guitar_idx,
-            disable_drums, disable_guitar, disable_bass
+            disable_drums, disable_guitar, disable_bass, shift_chart
         )
         self._create_ini(metadata, folder, has_drums, has_bass, has_guitar)
 
@@ -110,7 +110,8 @@ class MidiToYARGConverter:
 
     def _create_chart(self, input_path: str, output_path: str, quantize: bool, include_ghosts: bool,
                       bass_idx_override: int = -1, guitar_idx_override: int = -1,
-                      disable_drums: bool = False, disable_guitar: bool = False, disable_bass: bool = False) -> Tuple[bool, bool, bool]:
+                      disable_drums: bool = False, disable_guitar: bool = False, disable_bass: bool = False, 
+                      shift_chart: bool = False) -> Tuple[bool, bool, bool]:
         """
         Rebuilds the MIDI structure. Uses Type 1 to allow separate Tempo and Instrument tracks.
         Returns (has_drums, has_bass, has_guitar)
@@ -118,11 +119,18 @@ class MidiToYARGConverter:
         mid_in = MidiFile(input_path)
         mid_out = MidiFile(type=1, ticks_per_beat=mid_in.ticks_per_beat)
 
+        # Calculate Offset for Count-in (4 beats)
+        offset_ticks = 0
+        if shift_chart:
+            # Shift by 4 beats (one measure in 4/4)
+            offset_ticks = mid_in.ticks_per_beat * 4
+
         # 1. Build Tempo Map (Track 0)
-        tempo_events = self._build_tempo_track(mid_in, mid_out)
+        tempo_events = self._build_tempo_track(mid_in, mid_out, offset_ticks)
 
         # Calculate total song duration in ticks for the Beat Track
-        total_ticks = max((sum(m.time for m in t) for t in mid_in.tracks), default=0)
+        # Add offset to total ticks to account for the shift
+        total_ticks = max((sum(m.time for m in t) for t in mid_in.tracks), default=0) + offset_ticks
 
         # 2. Generate Beat Track (Visual grid/metronome)
         self._create_beat_track(mid_out, total_ticks, mid_in.ticks_per_beat, tempo_events)
@@ -130,7 +138,7 @@ class MidiToYARGConverter:
         # 3. Build Drums Track (Conditional)
         has_drums = False
         if not disable_drums:
-            drum_events = self._process_drums(mid_in, quantize)
+            drum_events = self._process_drums(mid_in, quantize, offset_ticks)
             
             if drum_events:
                 has_drums = True
@@ -138,7 +146,7 @@ class MidiToYARGConverter:
                 mid_out.tracks.append(drum_track)
                 
                 # Standard YARG/CH track headers for Drums
-                for h in ["PART DRUMS", "[mix 0 drums0]", "[play]", "[music_start]"]:
+                for h in ["PART DRUMS", "[play]", "[music_start]"]:
                     type_ = "track_name" if "PART" in h else "text"
                     kw = "name" if "PART" in h else "text"
                     drum_track.append(MetaMessage(type_, **{kw: h}, time=0))
@@ -174,7 +182,7 @@ class MidiToYARGConverter:
             bass_track.append(MetaMessage("text", text="[play]", time=0))
             bass_track.append(MetaMessage("text", text="[music_start]", time=0))
 
-            bass_events = self._process_5lane(mid_in.tracks[bass_idx], quantize, mid_in.ticks_per_beat, include_ghosts, tempo_events)
+            bass_events = self._process_5lane(mid_in.tracks[bass_idx], quantize, mid_in.ticks_per_beat, include_ghosts, tempo_events, offset_ticks)
             self._write_track(bass_track, bass_events)
 
         # 6. Build Guitar Track
@@ -190,7 +198,7 @@ class MidiToYARGConverter:
             guitar_track.append(MetaMessage("text", text="[music_start]", time=0))
 
             # Re-use logic for Guitar
-            guitar_events = self._process_5lane(mid_in.tracks[guitar_idx], quantize, mid_in.ticks_per_beat, include_ghosts, tempo_events)
+            guitar_events = self._process_5lane(mid_in.tracks[guitar_idx], quantize, mid_in.ticks_per_beat, include_ghosts, tempo_events, offset_ticks)
             self._write_track(guitar_track, guitar_events)
 
         mid_out.save(output_path)
@@ -248,7 +256,7 @@ class MidiToYARGConverter:
             curr += ticks_per_beat
             beat_count = (beat_count + 1) % beats_bar
 
-    def _build_tempo_track(self, mid_in: MidiFile, mid_out: MidiFile) -> List[Tuple[int, MetaMessage]]:
+    def _build_tempo_track(self, mid_in: MidiFile, mid_out: MidiFile, offset: int = 0) -> List[Tuple[int, MetaMessage]]:
         """
         Extracts tempo events and builds the Tempo Map track.
         """
@@ -265,26 +273,56 @@ class MidiToYARGConverter:
             if msg.type in ("set_tempo", "time_signature"):
                 tempo_events.append((abs_time, msg))
 
+        # Shift logic
+        if offset > 0:
+            # Capture initial state from raw events at t=0
+            initial_tempo = MetaMessage("set_tempo", tempo=500000) # Default 120bpm
+            initial_sig = MetaMessage("time_signature", numerator=4, denominator=4)
+            
+            # Find closest initial events (at t=0)
+            for t, m in tempo_events:
+                if t > 0: break
+                if m.type == "set_tempo": initial_tempo = m
+                if m.type == "time_signature": initial_sig = m
+            
+            # Create shifted list
+            shifted_events = []
+            
+            # Insert defaults at 0
+            shifted_events.append((0, initial_tempo.copy()))
+            shifted_events.append((0, initial_sig.copy()))
+            
+            # Shift all original events
+            for t, msg in tempo_events:
+                shifted_events.append((t + offset, msg))
+            
+            tempo_events = shifted_events
+
         # Write to track
         last_t = 0
+        # Sort to ensure order
+        tempo_events.sort(key=lambda x: x[0])
+        
         for t, msg in tempo_events:
-            tempo_track.append(msg.copy(time=t - last_t))
+            delta = t - last_t
+            if delta < 0: delta = 0
+            tempo_track.append(msg.copy(time=delta))
             last_t = t
             
         return tempo_events
 
-    def _process_drums(self, mid_in: MidiFile, quantize: bool) -> List[Tuple[int, str, int, int]]:
+    def _process_drums(self, mid_in: MidiFile, quantize: bool, offset: int = 0) -> List[Tuple[int, str, int, int]]:
         """
         Orchestrates the drum processing pipeline: Quantize (Optional) -> Humanize -> Conflict Resolve.
         """
         if quantize:
-            timeline = self._quantize_events(mid_in)
+            timeline = self._quantize_events(mid_in, offset)
         else:
-            timeline = self._get_raw_events(mid_in)
+            timeline = self._get_raw_events(mid_in, offset)
         self._humanize_timeline(timeline)
         return self._resolve_conflicts(timeline)
 
-    def _quantize_events(self, mid_in: MidiFile) -> Dict[int, List[int]]:
+    def _quantize_events(self, mid_in: MidiFile, offset: int = 0) -> Dict[int, List[int]]:
         """
         Reads MIDI tracks and snaps notes to the nearest grid.
         """
@@ -298,7 +336,7 @@ class MidiToYARGConverter:
         anchor_grid = tpb / 2
 
         for track in mid_in.tracks:
-            abs_t = 0
+            abs_t = offset
             for msg in track:
                 abs_t += msg.time
                 if (msg.type == "note_on" and msg.channel == 9):
@@ -309,14 +347,14 @@ class MidiToYARGConverter:
                         timeline[final_time].append(msg.note)
         return timeline
 
-    def _get_raw_events(self, mid_in: MidiFile) -> Dict[int, List[int]]:
+    def _get_raw_events(self, mid_in: MidiFile, offset: int = 0) -> Dict[int, List[int]]:
         """
         Reads MIDI tracks and extracts notes without snapping to grid.
         """
         timeline = defaultdict(list)
         
         for track in mid_in.tracks:
-            abs_t = 0
+            abs_t = offset
             for msg in track:
                 abs_t += msg.time
                 if (msg.type == "note_on" and msg.channel == 9):
@@ -461,7 +499,7 @@ class MidiToYARGConverter:
                 # Keep top 2 hands + all feet
                 timeline[t] = feet + hands[:2]
 
-    def _process_5lane(self, track: MidiTrack, quantize: bool, tpb: int, include_ghosts: bool, tempo_events: List[Tuple[int, MetaMessage]]) -> List[Tuple[int, str, int, int]]:
+    def _process_5lane(self, track: MidiTrack, quantize: bool, tpb: int, include_ghosts: bool, tempo_events: List[Tuple[int, MetaMessage]], offset: int = 0) -> List[Tuple[int, str, int, int]]:
         """
         Processes 5-lane instrument notes (Guitar/Bass) with Dynamic Anchor Windows.
         Adapts to Time Signature changes to define 4-bar chunks accurately.
@@ -469,7 +507,7 @@ class MidiToYARGConverter:
         # 1. Prepare Data: Filter valid notes
         parsed_notes = []
         active_notes = {} 
-        abs_t = 0
+        abs_t = offset
         
         vel_threshold = 1 if include_ghosts else MIN_VELOCITY
 
@@ -553,8 +591,6 @@ class MidiToYARGConverter:
             local_pitch_map = {note: i for i, note in enumerate(unique_pitches)}
             
             # Pre-calculate unique timestamps to find gaps between musical events/chords
-            all_times = sorted(list(set(t for t, _, _ in notes_in_window)))
-            time_map = {t: i for i, t in enumerate(all_times)}
             sorted_notes = sorted(notes_in_window, key=lambda x: x[0])
 
             for i, (t, dur, note) in enumerate(sorted_notes):

@@ -8,7 +8,7 @@ from converter import MidiToYARGConverter
 
 
 # Configuration
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 THEME_MODE = "Dark"
 THEME_COLOR = "blue"
 
@@ -251,6 +251,14 @@ class App(ctk.CTk):
         sw_ghost = ctk.CTkSwitch(sw_container, text="Include Ghost Notes", variable=self.ghosts_var, onvalue=True, offvalue=False)
         sw_ghost.pack(side="left", padx=20)
 
+        # Shift / Count-in
+        self.shift_var = ctk.BooleanVar(value=False)
+        sw_shift = ctk.CTkSwitch(sw_container, text="Add 4-Beat Count-in", variable=self.shift_var, onvalue=True, offvalue=False)
+        sw_shift.pack(side="left", padx=20)
+        
+        warn_text = "IMPORTANT: This only shifts the notes.\nEnsure your audio file already includes the count-in audio."
+        CTkToolTip(sw_shift, text=warn_text)
+
     def _toggle_track_selectors(self):
         state = "disabled" if self.auto_detect_var.get() else "normal"
         self.cbo_guitar.configure(state=state)
@@ -396,6 +404,7 @@ class App(ctk.CTk):
             # meta is already retrieved
             quantize = self.quantize_var.get()
             ghosts = self.ghosts_var.get()
+            shift = self.shift_var.get()
             
             # Instrument Overrides
             bass_idx_ovr = -1
@@ -417,7 +426,8 @@ class App(ctk.CTk):
                 self.midi_path, meta, self.output_dir, 
                 quantize=quantize, include_ghosts=ghosts,
                 bass_idx=bass_idx_ovr, guitar_idx=guitar_idx_ovr,
-                audio_path=self.audio_path
+                audio_path=self.audio_path,
+                shift_chart=shift
             )
             
             msg = (f"Chart generated successfully!\n\n"
