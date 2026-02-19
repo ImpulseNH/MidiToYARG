@@ -12,6 +12,7 @@ from mappings import (
     TOM_MARKERS_MAP,
     DRUM_BLUE, DRUM_GREEN, DRUM_YELLOW,
     GEM_GREEN, GEM_RED, GEM_YELLOW, GEM_BLUE, GEM_ORANGE,
+    BASE_EXPERT, BASE_HARD, BASE_MEDIUM, BASE_EASY,
     PROG_BASS_MIN, PROG_BASS_MAX, PROG_GUITAR_MIN, PROG_GUITAR_MAX
 )
 
@@ -138,7 +139,7 @@ class MidiToYARGConverter:
         # 3. Build Drums Track (Conditional)
         has_drums = False
         if not disable_drums:
-            drum_events = self._process_drums(mid_in, quantize, offset_ticks)
+            drum_events = self._process_drums(mid_in, quantize, include_ghosts, offset_ticks)
             
             if drum_events:
                 has_drums = True
@@ -151,7 +152,14 @@ class MidiToYARGConverter:
                     kw = "name" if "PART" in h else "text"
                     drum_track.append(MetaMessage(type_, **{kw: h}, time=0))
 
-                self._write_track(drum_track, drum_events)
+                # Generate Hard, Medium, Easy for Drums
+                hard_drums = self._reduce_difficulty(drum_events, BASE_EXPERT, BASE_HARD, "Hard", mid_in.ticks_per_beat, instrument="drums")
+                medium_drums = self._reduce_difficulty(hard_drums, BASE_HARD, BASE_MEDIUM, "Medium", mid_in.ticks_per_beat, instrument="drums")
+                easy_drums = self._reduce_difficulty(medium_drums, BASE_MEDIUM, BASE_EASY, "Easy", mid_in.ticks_per_beat, instrument="drums")
+
+                all_drums = drum_events + hard_drums + medium_drums + easy_drums
+                all_drums.sort(key=lambda x: x[0])
+                self._write_track(drum_track, all_drums)
 
         # 4. Instrument Selection (Manual Override vs Auto-Detect)
         if not disable_bass:
@@ -183,7 +191,15 @@ class MidiToYARGConverter:
             bass_track.append(MetaMessage("text", text="[music_start]", time=0))
 
             bass_events = self._process_5lane(mid_in.tracks[bass_idx], quantize, mid_in.ticks_per_beat, include_ghosts, tempo_events, offset_ticks)
-            self._write_track(bass_track, bass_events)
+            
+            # Generate Lower Diffs
+            bass_hard = self._reduce_difficulty(bass_events, BASE_EXPERT, BASE_HARD, "Hard", mid_in.ticks_per_beat, instrument="5lane")
+            bass_medium = self._reduce_difficulty(bass_hard, BASE_HARD, BASE_MEDIUM, "Medium", mid_in.ticks_per_beat, instrument="5lane")
+            bass_easy = self._reduce_difficulty(bass_medium, BASE_MEDIUM, BASE_EASY, "Easy", mid_in.ticks_per_beat, instrument="5lane")
+            
+            all_bass = bass_events + bass_hard + bass_medium + bass_easy
+            all_bass.sort(key=lambda x: x[0])
+            self._write_track(bass_track, all_bass)
 
         # 6. Build Guitar Track
         has_guitar = False
@@ -199,7 +215,15 @@ class MidiToYARGConverter:
 
             # Re-use logic for Guitar
             guitar_events = self._process_5lane(mid_in.tracks[guitar_idx], quantize, mid_in.ticks_per_beat, include_ghosts, tempo_events, offset_ticks)
-            self._write_track(guitar_track, guitar_events)
+            
+            # Generate Lower Diffs
+            guitar_hard = self._reduce_difficulty(guitar_events, BASE_EXPERT, BASE_HARD, "Hard", mid_in.ticks_per_beat, instrument="5lane")
+            guitar_medium = self._reduce_difficulty(guitar_hard, BASE_HARD, BASE_MEDIUM, "Medium", mid_in.ticks_per_beat, instrument="5lane")
+            guitar_easy = self._reduce_difficulty(guitar_medium, BASE_MEDIUM, BASE_EASY, "Easy", mid_in.ticks_per_beat, instrument="5lane")
+            
+            all_guitar = guitar_events + guitar_hard + guitar_medium + guitar_easy
+            all_guitar.sort(key=lambda x: x[0])
+            self._write_track(guitar_track, all_guitar)
 
         mid_out.save(output_path)
         return has_drums, has_bass, has_guitar
@@ -311,54 +335,58 @@ class MidiToYARGConverter:
             
         return tempo_events
 
-    def _process_drums(self, mid_in: MidiFile, quantize: bool, offset: int = 0) -> List[Tuple[int, str, int, int]]:
+    def _process_drums(self, mid_in: MidiFile, quantize: bool, include_ghosts: bool, offset: int = 0) -> List[Tuple[int, str, int, int]]:
         """
         Orchestrates the drum processing pipeline: Quantize (Optional) -> Humanize -> Conflict Resolve.
         """
         if quantize:
-            timeline = self._quantize_events(mid_in, offset)
+            timeline = self._quantize_events(mid_in, include_ghosts, offset)
         else:
-            timeline = self._get_raw_events(mid_in, offset)
+            timeline = self._get_raw_events(mid_in, include_ghosts, offset)
         self._humanize_timeline(timeline)
         return self._resolve_conflicts(timeline)
 
-    def _quantize_events(self, mid_in: MidiFile, offset: int = 0) -> Dict[int, List[int]]:
+    def _quantize_events(self, mid_in: MidiFile, include_ghosts: bool, offset: int = 0) -> Dict[int, List[int]]:
         """
         Reads MIDI tracks and snaps notes to the nearest grid.
         """
         timeline = defaultdict(list)
         tpb = mid_in.ticks_per_beat
         
-        # Config: Snap tolerance (11%)
+        # Config: Snap tolerance 11% (This is the value that worked well for most songs)
         # Grid: 1/8 notes (Eighth notes) -> tpb / 2 
         # (Standard beat is 1/4 note, so half a beat is 1/8)
         tolerance_ticks = tpb * 0.11
         anchor_grid = tpb / 2
+        
+        threshold = 1 if include_ghosts else MIN_VELOCITY
 
         for track in mid_in.tracks:
             abs_t = offset
             for msg in track:
                 abs_t += msg.time
                 if (msg.type == "note_on" and msg.channel == 9):
-                    if msg.velocity >= MIN_VELOCITY and msg.note in DRUM_MAPPING:
+                    if msg.velocity >= threshold and msg.note in DRUM_MAPPING:
                         # Grid snapping
                         nearest = round(abs_t / anchor_grid) * anchor_grid
                         final_time = int(nearest) if abs(abs_t - nearest) <= tolerance_ticks else abs_t
                         timeline[final_time].append(msg.note)
         return timeline
 
-    def _get_raw_events(self, mid_in: MidiFile, offset: int = 0) -> Dict[int, List[int]]:
+    def _get_raw_events(self, mid_in: MidiFile, include_ghosts: bool, offset: int = 0) -> Dict[int, List[int]]:
         """
         Reads MIDI tracks and extracts notes without snapping to grid.
         """
         timeline = defaultdict(list)
+        
+        threshold = 1 if include_ghosts else MIN_VELOCITY
         
         for track in mid_in.tracks:
             abs_t = offset
             for msg in track:
                 abs_t += msg.time
                 if (msg.type == "note_on" and msg.channel == 9):
-                    if msg.velocity >= MIN_VELOCITY and msg.note in DRUM_MAPPING:
+                    if msg.velocity >= threshold and msg.note in DRUM_MAPPING:
                         timeline[abs_t].append(msg.note)
         return timeline
 
@@ -433,9 +461,6 @@ class MidiToYARGConverter:
                 for n in notes:
                     final_assignments.append((n, gem))
             
-            # Re-check Tom Collisions on the assigned gems
-            assigned_gems_set = set(g for _, g in final_assignments)
-            
             green_tom_present = not raw_notes.isdisjoint(GREEN_TOMS)
             blue_tom_present = not raw_notes.isdisjoint(BLUE_TOMS)
             
@@ -474,6 +499,117 @@ class MidiToYARGConverter:
                              final_events.append((t + NOTE_LEN, "note_off", marker, 0))
 
         return sorted(final_events, key=lambda x: x[0])
+
+    def _reduce_difficulty(self, source_events: List[Tuple[int, str, int, int]], source_base: int, target_base: int, difficulty: str, tpb: int, instrument: str = "5lane") -> List[Tuple[int, str, int, int]]:
+        """
+        Generates a lower difficulty based on strict rules derived from the source events.
+        """
+        reduced_events = []
+        
+        # 1. Config based on difficulty
+        # Grid snap: Minimum distance between note starts
+        if difficulty == "Hard":
+             min_step = tpb / 2  # 1/8 note
+             max_chord = 3
+             max_lane = 4 
+        elif difficulty == "Medium":
+             min_step = tpb      # 1/4 note
+             max_chord = 2
+             max_lane = 3 
+        elif difficulty == "Easy":
+             min_step = tpb * 2  # 1/2 note
+             max_chord = 2 
+             max_lane = 2 
+        else:
+             return []
+
+        # Override for Drums specific logic
+        if instrument == "drums":
+             # Hard/Medium: Keep colors (no shifting Green->Blue), just reduce density
+             if difficulty in ["Hard", "Medium"]:
+                 max_lane = 4 # Always allow Green/Crash
+             
+             # Easy: Strict Single Note + Color restriction
+             if difficulty == "Easy":
+                 max_chord = 1 # Strict single note
+                 # Lanes: 0=Kick, 1=Red(Snare), 2=Yellow(HiHat) 
+
+        # Group by start time
+        events_by_time = defaultdict(list)
+        for t, type_, note, vel in source_events:
+             if type_ == "note_on":
+                 events_by_time[t].append((note, vel))
+        
+        sorted_times = sorted(events_by_time.keys())
+        last_t = -min_step # Ensure first note is picked
+
+        # Iterate through time steps
+        for t in sorted_times:
+             # Density Check
+             if t - last_t < min_step:
+                 continue
+             
+             # Update last_t immediately if we decide to emit
+             # But we first need to check if we have valid notes to emit
+             
+             original_notes = events_by_time[t]
+             mapped_notes = []
+             
+             for note, vel in original_notes:
+                 lane = note - source_base
+                 # Basic bounds check
+                 if 0 <= lane <= 4:
+                     mapped_notes.append(lane)
+             
+             if not mapped_notes:
+                 continue
+
+             valid_lanes = self._select_lanes_for_difficulty(mapped_notes, instrument, difficulty, max_lane)
+             
+             # Deduplicate and Cap Chord
+             unique_lanes = sorted(list(set(valid_lanes)))
+             
+             if len(unique_lanes) > max_chord:
+                  # Keep lowest/simplest notes
+                  unique_lanes = unique_lanes[:max_chord]
+             
+             # If we have content, write it and update last_t
+             if unique_lanes:
+                 last_t = t
+                 for lane in unique_lanes:
+                     final_note = target_base + lane
+                     reduced_events.append((t, "note_on", final_note, 100))
+                     reduced_events.append((t + NOTE_LEN, "note_off", final_note, 0))
+        
+        return sorted(reduced_events, key=lambda x: x[0])
+
+
+    def _select_lanes_for_difficulty(self, mapped_notes: List[int], instrument: str, difficulty: str, max_lane: int) -> List[int]:
+        """
+        Applies instrument-specific reduction rules to a set of concurrent notes.
+        """
+        if instrument == "drums":
+            if difficulty == "Easy":
+                # Rule: Single Note Only. Priority: Snare(1) > Green(4) > Blue(3) > Kick(0) > Yellow(2)
+                priority_order = [1, 4, 3, 0, 2]
+                for p_lane in priority_order:
+                    if p_lane in mapped_notes:
+                        return [p_lane]
+                return []
+            else:
+                 # Hard/Medium: Keep original lanes (0-4), just restricted by density/chord cap later
+                 return mapped_notes
+
+        else:
+            # 5-Lane Guitar/Bass Shifting Logic
+            # Shift notes down if they exceed max_lane (e.g. Orange -> Blue)
+            valid_lanes = []
+            for lane in mapped_notes:
+                if lane > max_lane:
+                    valid_lanes.append(max_lane)
+                else:
+                    valid_lanes.append(lane)
+            return valid_lanes
 
 
 

@@ -58,13 +58,16 @@ The goal of this project is not to replace human charting, but to be an **excell
 - **Advanced Drum Logic**:
   - **Auto-Humanization**: Enforces strict 2-hand limits.
   - **Conflict Resolution**: Intelligently handles cymbal/tom collisions and "Double Crashes" (e.g., moves one cymbal to a different color to allow 2-handed play).
+- **Multi-Difficulty Generation**:
+  - Automatically generates **Expert, Hard, Medium, and Easy** charts from the source MIDI.
+  - Uses custom rules for drums and Guitar/Bass.
 - **Metadata & Audio Handling**:
   - GUI for full metadata editing (Artist, Album, Difficulties per instrument).
   - **Auto-Calculates Band Difficulty** based on active instruments.
   - Automatically copies and renames your audio file to `song.ogg`, ensuring the folder is ready for YARG drop-in.
 - **Beat Track Generation**: automatically creates the tempo map and beat grid.
-- **Optional Quantization**: includes a "Auto-Quantize" option (snapping to 1/8 notes) to correct small timing imperfections.
-- **Optional Count-in**: includes a "Add 4-Beat Count-in" option to add a count-in section at the beginning of the song.
+- **Optional Quantization**: includes a "Auto-Quantize" option (snapping to half beat) to correct small timing imperfections.
+- **Optional Count-in**: includes a "Add Count-in Section" option to add a count-in section at the beginning of the song _(this only shifts the chart, make sure your audio file already includes the count-in section)_.
 
 ### Built With
 
@@ -139,7 +142,7 @@ If you want to modify the code or run it through Python:
 ## Roadmap
 
 - [ ] Add support for multitrack songs.
-- [ ] Add support for more difficulties (currently defaults to Expert).
+- [x] Add support for more difficulties (Expert -> Hard -> Medium -> Easy).
 - [x] Implement smart quantization to align off-beat notes.
 - [x] Add support for other instruments (Guitar, Bass).
 - [ ] Add support for Pro Keys / Vocals.

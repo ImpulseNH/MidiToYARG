@@ -253,10 +253,10 @@ class App(ctk.CTk):
 
         # Shift / Count-in
         self.shift_var = ctk.BooleanVar(value=False)
-        sw_shift = ctk.CTkSwitch(sw_container, text="Add 4-Beat Count-in", variable=self.shift_var, onvalue=True, offvalue=False)
+        sw_shift = ctk.CTkSwitch(sw_container, text="Add Count-in Section", variable=self.shift_var, onvalue=True, offvalue=False)
         sw_shift.pack(side="left", padx=20)
         
-        warn_text = "IMPORTANT: This only shifts the notes.\nEnsure your audio file already includes the count-in audio."
+        warn_text = "IMPORTANT: This only shifts the chart.\nMake sure your audio file already includes the count-in section."
         CTkToolTip(sw_shift, text=warn_text)
 
     def _toggle_track_selectors(self):

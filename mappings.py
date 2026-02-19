@@ -2,8 +2,11 @@
 # 1. GENERAL MIDI / SHARED CONSTANTS
 # =============================================================================
 # Base MIDI Notes for Difficulties
+# Base MIDI Notes for Difficulties
 BASE_EXPERT = 96
-# Future expansion: BASE_HARD=84, BASE_MEDIUM=72, BASE_EASY=60
+BASE_HARD   = 84
+BASE_MEDIUM = 72
+BASE_EASY   = 60
 
 # Lane Offsets (0-indexed from Left to Right / Kick to Orange)
 LANE_0 = 0  # Green  / Kick
